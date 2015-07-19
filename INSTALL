@@ -1,0 +1,2 @@
+# cp repos.conf /etc/portage/repos.conf
+# ln -s /home/adi/workspace/portage-overlays/gentoo-overlay/profiles/default/linux/amd64/13.0/systemd /etc/portage/make.profile
