@@ -1,0 +1,2 @@
+To reset submodules to their parent repo ref:
+  git submodule update --init
