@@ -1,0 +1,6 @@
+[submodule "gentoo-overlay"]
+	path = gentoo-overlay
+	url = ./gentoo-overlay
+[submodule "sabayon-for-gentoo-overlay"]
+	path = sabayon-for-gentoo-overlay
+	url = ./sabayon-for-gentoo-overlay
