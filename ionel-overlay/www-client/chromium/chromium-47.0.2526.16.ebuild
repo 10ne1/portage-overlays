@@ -1,6 +1,6 @@
 # Copyright 1999-2015 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/www-client/chromium/chromium-45.0.2414.0.ebuild,v 1.1 2015/06/01 20:27:33 phajdan.jr Exp $
+# $Id$
 
 EAPI="5"
 PYTHON_COMPAT=( python2_7 )
@@ -14,13 +14,13 @@ inherit check-reqs chromium eutils flag-o-matic multilib multiprocessing pax-uti
 
 DESCRIPTION="Open-source version of Google Chrome web browser"
 HOMEPAGE="http://chromium.org/"
-SRC_URI="https://commondatastorage.googleapis.com/chromium-browser-official/${P}.tar.xz"
+SRC_URI="https://commondatastorage.googleapis.com/chromium-browser-official/${P}-lite.tar.xz"
 
-LICENSE="BSD"
+LICENSE="BSD hotwording? ( no-source-code )"
 SLOT="0"
 KEYWORDS="~amd64 ~arm ~x86"
-IUSE="cups gnome gnome-keyring hidpi kerberos neon pic +proprietary-codecs pulseaudio selinux +tcmalloc"
-RESTRICT="proprietary-codecs? ( bindist )"
+IUSE="cups gnome gnome-keyring gtk3 hidpi hotwording kerberos neon pic +proprietary-codecs pulseaudio selinux +system-ffmpeg +tcmalloc widevine"
+RESTRICT="!system-ffmpeg? ( proprietary-codecs? ( bindist ) )"
 
 # Native Client binaries are compiled with different set of flags, bug #452066.
 QA_FLAGS_IGNORED=".*\.nexe"
@@ -36,6 +36,7 @@ RDEPEND=">=app-accessibility/speech-dispatcher-0.8:=
 	>=dev-libs/elfutils-0.149
 	dev-libs/expat:=
 	dev-libs/glib:=
+	>=dev-libs/icu-55.1:=
 	>=dev-libs/jsoncpp-0.5.0-r1:=
 	>=dev-libs/libevent-1.4.13:=
 	dev-libs/libxml2:=[icu]
@@ -56,6 +57,7 @@ RDEPEND=">=app-accessibility/speech-dispatcher-0.8:=
 	>=media-libs/libwebp-0.4.0:=
 	media-libs/speex:=
 	pulseaudio? ( media-sound/pulseaudio:= )
+	system-ffmpeg? ( >=media-video/ffmpeg-2.7.2:=[opus,vorbis,vpx] )
 	sys-apps/dbus:=
 	sys-apps/pciutils:=
 	>=sys-libs/libcap-2.22:=
@@ -63,7 +65,8 @@ RDEPEND=">=app-accessibility/speech-dispatcher-0.8:=
 	virtual/udev
 	x11-libs/cairo:=
 	x11-libs/gdk-pixbuf:=
-	x11-libs/gtk+:2=
+	gtk3? ( x11-libs/gtk+:3= )
+	!gtk3? ( x11-libs/gtk+:2= )
 	x11-libs/libdrm
 	x11-libs/libX11:=
 	x11-libs/libXcomposite:=
@@ -100,18 +103,23 @@ RDEPEND+="
 	virtual/opengl
 	virtual/ttf-fonts
 	selinux? ( sec-policy/selinux-chromium )
-	tcmalloc? ( !<x11-drivers/nvidia-drivers-331.20 )"
+	tcmalloc? ( !<x11-drivers/nvidia-drivers-331.20 )
+	widevine? ( www-plugins/chrome-binary-plugins[widevine(-)] )"
 
 # Python dependencies. The DEPEND part needs to be kept in sync
 # with python_check_deps.
 DEPEND+=" $(python_gen_any_dep '
 	dev-python/beautifulsoup:python-2[${PYTHON_USEDEP}]
+	dev-python/beautifulsoup:4[${PYTHON_USEDEP}]
+	dev-python/html5lib[${PYTHON_USEDEP}]
 	dev-python/jinja[${PYTHON_USEDEP}]
 	dev-python/ply[${PYTHON_USEDEP}]
 	dev-python/simplejson[${PYTHON_USEDEP}]
 ')"
 python_check_deps() {
 	has_version "dev-python/beautifulsoup:python-2[${PYTHON_USEDEP}]" && \
+		has_version "dev-python/beautifulsoup:4[${PYTHON_USEDEP}]" && \
+		has_version "dev-python/html5lib[${PYTHON_USEDEP}]" && \
 		has_version "dev-python/jinja[${PYTHON_USEDEP}]" && \
 		has_version "dev-python/ply[${PYTHON_USEDEP}]" && \
 		has_version "dev-python/simplejson[${PYTHON_USEDEP}]"
@@ -138,7 +146,7 @@ are not displayed properly:
 Depending on your desktop environment, you may need
 to install additional packages to get icons on the Downloads page.
 
-For KDE, the required package is kde-base/oxygen-icons.
+For KDE, the required package is kde-apps/oxygen-icons.
 
 For other desktop environments, try one of the following:
 - x11-themes/gnome-icon-theme
@@ -185,13 +193,21 @@ src_prepare() {
 	#	touch out/Release/gen/sdk/toolchain/linux_x86_newlib/stamp.untar || die
 	# fi
 
+	epatch "${FILESDIR}/enable_vaapi_on_linux_47.diff"
+	epatch "${FILESDIR}/${PN}-system-ffmpeg-r0.patch"
 	epatch "${FILESDIR}/${PN}-system-jinja-r7.patch"
-	epatch "${FILESDIR}/${PN}-enable-vaapi-on-linux.patch"
+	epatch "${FILESDIR}/chromium-widevine-r1.patch"
 
 	epatch_user
 
+	local conditional_bundled_libraries=""
+	if ! use system-ffmpeg; then
+		conditional_bundled_libraries+=" third_party/ffmpeg"
+	fi
+
 	# Remove most bundled libraries. Some are still needed.
 	build/linux/unbundle/remove_bundled_libraries.py \
+		${conditional_bundled_libraries} \
 		'base/third_party/dmg_fp' \
 		'base/third_party/dynamic_annotations' \
 		'base/third_party/icu' \
@@ -214,12 +230,20 @@ src_prepare() {
 		'third_party/boringssl' \
 		'third_party/brotli' \
 		'third_party/cacheinvalidation' \
+		'third_party/catapult' \
+		'third_party/catapult/tracing/third_party/components/polymer' \
+		'third_party/catapult/tracing/third_party/d3' \
+		'third_party/catapult/tracing/third_party/gl-matrix' \
+		'third_party/catapult/tracing/third_party/jszip' \
+		'third_party/catapult/tracing/third_party/tvcm' \
+		'third_party/catapult/tracing/third_party/tvcm/third_party/rcssmin' \
+		'third_party/catapult/tracing/third_party/tvcm/third_party/rjsmin' \
 		'third_party/cld_2' \
 		'third_party/cros_system_api' \
 		'third_party/cython/python_flags.py' \
+		'third_party/devscripts' \
 		'third_party/dom_distiller_js' \
 		'third_party/dom_distiller_js/dist/proto_gen/third_party/dom_distiller_js' \
-		'third_party/ffmpeg' \
 		'third_party/fips181' \
 		'third_party/flot' \
 		'third_party/google_input_tools' \
@@ -227,7 +251,6 @@ src_prepare() {
 		'third_party/google_input_tools/third_party/closure_library/third_party/closure' \
 		'third_party/hunspell' \
 		'third_party/iccjpeg' \
-		'third_party/icu' \
 		'third_party/jstemplate' \
 		'third_party/khronos' \
 		'third_party/leveldatabase' \
@@ -240,9 +263,10 @@ src_prepare() {
 		'third_party/libudev' \
 		'third_party/libusb' \
 		'third_party/libva' \
-		'third_party/libvpx' \
-		'third_party/libvpx/source/libvpx/third_party/x86inc' \
+		'third_party/libvpx_new' \
+		'third_party/libvpx_new/source/libvpx/third_party/x86inc' \
 		'third_party/libxml/chromium' \
+		'third_party/libwebm' \
 		'third_party/libyuv' \
 		'third_party/lss' \
 		'third_party/lzma_sdk' \
@@ -255,9 +279,14 @@ src_prepare() {
 		'third_party/opus' \
 		'third_party/ots' \
 		'third_party/pdfium' \
+		'third_party/pdfium/third_party/agg23' \
 		'third_party/pdfium/third_party/base' \
 		'third_party/pdfium/third_party/bigint' \
 		'third_party/pdfium/third_party/freetype' \
+		'third_party/pdfium/third_party/lcms2-2.6' \
+		'third_party/pdfium/third_party/libjpeg' \
+		'third_party/pdfium/third_party/libopenjpeg20' \
+		'third_party/pdfium/third_party/zlib_v128' \
 		'third_party/polymer' \
 		'third_party/protobuf' \
 		'third_party/qcms' \
@@ -267,15 +296,6 @@ src_prepare() {
 		'third_party/smhasher' \
 		'third_party/sqlite' \
 		'third_party/tcmalloc' \
-		'third_party/trace-viewer' \
-		'third_party/trace-viewer/third_party/components/polymer' \
-		'third_party/trace-viewer/third_party/d3' \
-		'third_party/trace-viewer/third_party/gl-matrix' \
-		'third_party/trace-viewer/third_party/jszip' \
-		'third_party/trace-viewer/third_party/tvcm' \
-		'third_party/trace-viewer/third_party/tvcm/third_party/beautifulsoup/polymer_soup.py' \
-		'third_party/trace-viewer/third_party/tvcm/third_party/rcssmin' \
-		'third_party/trace-viewer/third_party/tvcm/third_party/rjsmin' \
 		'third_party/usrsctp' \
 		'third_party/web-animations-js' \
 		'third_party/webdriver' \
@@ -285,7 +305,6 @@ src_prepare() {
 		'third_party/zlib/google' \
 		'url/third_party/mozilla' \
 		'v8/src/third_party/fdlibm' \
-		'v8/src/third_party/kernel' \
 		'v8/src/third_party/valgrind' \
 		--do-remove || die
 }
@@ -316,7 +335,6 @@ src_configure() {
 
 	# Use system-provided libraries.
 	# TODO: use_system_hunspell (upstream changes needed).
-	# TODO: use_system_icu (needs http://bugs.icu-project.org/trac/ticket/11358)
 	# TODO: use_system_libsrtp (bug #459932).
 	# TODO: use_system_libusb (http://crbug.com/266149).
 	# TODO: use_system_libvpx (http://crbug.com/494939).
@@ -326,8 +344,10 @@ src_configure() {
 	# TODO: use_system_sqlite (http://crbug.com/22208).
 	myconf+="
 		-Duse_system_bzip2=1
+		-Duse_system_ffmpeg=$(usex system-ffmpeg 1 0)
 		-Duse_system_flac=1
 		-Duse_system_harfbuzz=1
+		-Duse_system_icu=1
 		-Duse_system_jsoncpp=1
 		-Duse_system_libevent=1
 		-Duse_system_libjpeg=1
@@ -359,10 +379,13 @@ src_configure() {
 		$(gyp_use gnome use_gconf)
 		$(gyp_use gnome-keyring use_gnome_keyring)
 		$(gyp_use gnome-keyring linux_link_gnome_keyring)
+		$(gyp_use gtk3)
 		$(gyp_use hidpi enable_hidpi)
+		$(gyp_use hotwording enable_hotwording)
 		$(gyp_use kerberos)
 		$(gyp_use pulseaudio)
-		$(gyp_use tcmalloc use_allocator tcmalloc none)"
+		$(gyp_use tcmalloc use_allocator tcmalloc none)
+		$(gyp_use widevine enable_widevine)"
 
 	# Use explicit library dependencies instead of dlopen.
 	# This makes breakages easier to detect by revdep-rebuild.
@@ -459,38 +482,44 @@ src_configure() {
 
 		# Prevent libvpx build failures. Bug 530248, 544702, 546984.
 		if [[ ${myarch} == amd64 || ${myarch} == x86 ]]; then
-			filter-flags -mno-mmx -mno-sse2 -mno-ssse3 -mno-sse4.1 -mno-avx2
+			filter-flags -mno-mmx -mno-sse2 -mno-ssse3 -mno-sse4.1 -mno-avx -mno-avx2
 		fi
 	fi
 
 	# Make sure the build system will use the right tools, bug #340795.
-	tc-export AR CC CXX RANLIB
+	tc-export AR CC CXX NM
 
 	# Tools for building programs to be executed on the build system, bug #410883.
-	export AR_host=$(tc-getBUILD_AR)
-	export CC_host=$(tc-getBUILD_CC)
-	export CXX_host=$(tc-getBUILD_CXX)
-	export LD_host=${CXX_host}
+	if tc-is-cross-compiler; then
+		export AR_host=$(tc-getBUILD_AR)
+		export CC_host=$(tc-getBUILD_CC)
+		export CXX_host=$(tc-getBUILD_CXX)
+		export NM_host=$(tc-getBUILD_NM)
+	fi
 
 	# Bug 491582.
 	export TMPDIR="${WORKDIR}/temp"
-	mkdir -m 755 "${TMPDIR}" || die
+	mkdir -p -m 755 "${TMPDIR}" || die
 
-	local build_ffmpeg_args=""
-	if use pic && [[ "${ffmpeg_target_arch}" == "ia32" ]]; then
-		build_ffmpeg_args+=" --disable-asm"
+	if ! use system-ffmpeg; then
+		local build_ffmpeg_args=""
+		if use pic && [[ "${ffmpeg_target_arch}" == "ia32" ]]; then
+			build_ffmpeg_args+=" --disable-asm"
+		fi
+
+		# Re-configure bundled ffmpeg. See bug #491378 for example reasons.
+		einfo "Configuring bundled ffmpeg..."
+		pushd third_party/ffmpeg > /dev/null || die
+		chromium/scripts/build_ffmpeg.py linux ${ffmpeg_target_arch} \
+			--branding ${ffmpeg_branding} -- ${build_ffmpeg_args} || die
+		chromium/scripts/copy_config.sh || die
+		chromium/scripts/generate_gyp.py || die
+		popd > /dev/null || die
 	fi
 
-	# Re-configure bundled ffmpeg. See bug #491378 for example reasons.
-	einfo "Configuring bundled ffmpeg..."
-	pushd third_party/ffmpeg > /dev/null || die
-	chromium/scripts/build_ffmpeg.py linux ${ffmpeg_target_arch} \
-		--branding ${ffmpeg_branding} -- ${build_ffmpeg_args} || die
-	chromium/scripts/copy_config.sh || die
-	chromium/scripts/generate_gyp.py || die
-	popd > /dev/null || die
-
 	third_party/libaddressinput/chromium/tools/update-strings.py || die
+
+	touch chrome/test/data/webui/i18n_process_css_test.html || die
 
 	einfo "Configuring Chromium..."
 	build/linux/unbundle/replace_gyp_files.py ${myconf} || die
@@ -536,6 +565,7 @@ src_install() {
 	fperms 4755 "${CHROMIUM_HOME}/chrome-sandbox"
 
 	doexe out/Release/chromedriver || die
+	use widevine && doexe out/Release/libwidevinecdmadapter.so
 
 	# if ! use arm; then
 	#	doexe out/Release/nacl_helper{,_bootstrap} || die
@@ -581,8 +611,6 @@ src_install() {
 
 	newman out/Release/chrome.1 chromium${CHROMIUM_SUFFIX}.1 || die
 	newman out/Release/chrome.1 chromium-browser${CHROMIUM_SUFFIX}.1 || die
-
-	doexe out/Release/libffmpegsumo.so || die
 
 	# Install icons and desktop entry.
 	local branding size
