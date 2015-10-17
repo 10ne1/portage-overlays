@@ -10,3 +10,6 @@
 [submodule "qt-overlay"]
 	path = qt-overlay
 	url = ./qt-overlay
+[submodule "haskell-overlay"]
+	path = haskell-overlay
+	url = ./haskell-overlay
