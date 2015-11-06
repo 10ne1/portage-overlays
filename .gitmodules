@@ -10,3 +10,6 @@
 [submodule "haskell-overlay"]
 	path = haskell-overlay
 	url = ./haskell-overlay
+[submodule "ionel-overlay"]
+	path = ionel-overlay
+	url = git@github.com:10ne1/ionel-overlay.git
