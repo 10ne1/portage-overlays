@@ -1,9 +1,6 @@
 [submodule "gentoo-overlay"]
 	path = gentoo-overlay
 	url = ./gentoo-overlay
-[submodule "c2p-overlay"]
-	path = c2p-overlay
-	url = ./c2p-overlay
 [submodule "qt-overlay"]
 	path = qt-overlay
 	url = ./qt-overlay
