@@ -7,9 +7,9 @@
 [submodule "qt-overlay"]
 	path = qt-overlay
 	url = ./qt-overlay
-[submodule "haskell-overlay"]
-	path = haskell-overlay
-	url = ./haskell-overlay
 [submodule "ionel-overlay"]
 	path = ionel-overlay
 	url = git@github.com:10ne1/ionel-overlay.git
+[submodule "haskell-overlay"]
+	path = haskell-overlay
+	url = https://github.com/gentoo-haskell/gentoo-haskell.git
