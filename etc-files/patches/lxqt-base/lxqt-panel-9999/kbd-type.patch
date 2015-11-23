@@ -1,0 +1,310 @@
+diff --git a/plugin-kbindicator/src/content.cpp b/plugin-kbindicator/src/content.cpp
+index 12bf29a..36d6170 100644
+--- a/plugin-kbindicator/src/content.cpp
++++ b/plugin-kbindicator/src/content.cpp
+@@ -67,6 +67,12 @@ Content::Content(bool layoutEnabled):
+     m_layout->installEventFilter(this);
+     layout()->addWidget(m_layout);
+     m_layout->setEnabled(false);
++
++    m_kbdtype = new QLabel();
++    m_kbdtype->setObjectName("KbdTypeLabel");
++    m_kbdtype->setAlignment(Qt::AlignCenter);
++    m_kbdtype->installEventFilter(this);
++    layout()->addWidget(m_kbdtype);
+ }
+ 
+ Content::~Content()
+@@ -78,12 +84,17 @@ bool Content::setup()
+     m_numLock->setVisible(Settings::instance().showNumLock());
+     m_scrollLock->setVisible(Settings::instance().showScrollLock());
+     m_layout->setVisible(m_layoutEnabled && Settings::instance().showLayout());
++    m_kbdtype->setVisible(Settings::instance().showKbdType());
+     return true;
+ }
+ 
+-void Content::layoutChanged(const QString & sym, const QString & name, const QString & variant)
++void Content::layoutChanged(const QString & sym,
++			    const QString & name,
++			    const QString & variant,
++			    const QString & udevLayout)
+ {
+     m_layout->setText(sym.toUpper());
++    m_kbdtype->setText(udevLayout.toUpper());
+     QString txt = QString("<html><table>\
+     <tr><td>%1: </td><td>%3</td></tr>\
+     <tr><td>%2: </td><td>%4</td></tr>\
+@@ -96,7 +107,6 @@ void Content::modifierStateChanged(Controls mod, bool active)
+     setEnabled(mod, active);
+ }
+ 
+-
+ void Content::setEnabled(Controls cnt, bool enabled)
+ {
+     widget(cnt)->setEnabled(enabled);
+@@ -109,6 +119,7 @@ QWidget* Content::widget(Controls cnt) const
+     case Num:    return m_numLock;
+     case Scroll: return m_scrollLock;
+     case Layout: return m_layout;
++    case KbdType: return m_kbdtype;
+     }
+     return 0;
+ }
+@@ -126,6 +137,9 @@ bool Content::eventFilter(QObject *object, QEvent *event)
+         else if(object == m_layout){
+             emit controlClicked(Controls::Layout);
+         }
++	else if (object == m_kbdtype)
++	    emit controlClicked(Controls::KbdType);
++	
+         return true;
+     }
+ 
+diff --git a/plugin-kbindicator/src/content.h b/plugin-kbindicator/src/content.h
+index 37aee23..c50a1e7 100644
+--- a/plugin-kbindicator/src/content.h
++++ b/plugin-kbindicator/src/content.h
+@@ -49,16 +49,22 @@ public:
+     void showHorizontal();
+     void showVertical();
+ public slots:
+-    void layoutChanged(const QString & sym, const QString & name, const QString & variant);
++    void layoutChanged(const QString & sym,
++		       const QString & name,
++		       const QString & variant,
++		       const QString & udevLayout);
++    
+     void modifierStateChanged(Controls mod, bool active);
+ signals:
+     void controlClicked(Controls cnt);
+ private:
+     bool        m_layoutEnabled;
++    bool        m_kbdTypeEnabled;
+     QLabel     *m_capsLock;
+     QLabel     *m_numLock;
+     QLabel     *m_scrollLock;
+     QLabel     *m_layout;
++    QLabel     *m_kbdtype;
+ };
+ 
+ #endif
+diff --git a/plugin-kbindicator/src/controls.h b/plugin-kbindicator/src/controls.h
+index 3732661..3c679e2 100644
+--- a/plugin-kbindicator/src/controls.h
++++ b/plugin-kbindicator/src/controls.h
+@@ -31,7 +31,8 @@ enum Controls {
+     Caps,
+     Num,
+     Scroll,
+-    Layout
++    Layout,
++    KbdType,
+ };
+ 
+ #endif
+diff --git a/plugin-kbindicator/src/kbdinfo.h b/plugin-kbindicator/src/kbdinfo.h
+index 4465b59..dcfe1f8 100644
+--- a/plugin-kbindicator/src/kbdinfo.h
++++ b/plugin-kbindicator/src/kbdinfo.h
+@@ -41,6 +41,7 @@ public:
+         QString sym;
+         QString name;
+         QString variant;
++        QString udevLayout;
+     };
+ 
+ public:
+@@ -53,6 +54,9 @@ public:
+     const QString & currentVariant() const
+     { return m_keyboardInfo[m_current].variant; }
+ 
++    const QString & currentUdevLayout() const
++    { return m_keyboardInfo[m_current].udevLayout; }
++
+     int currentGroup() const
+     { return m_current; }
+ 
+diff --git a/plugin-kbindicator/src/kbdkeeper.cpp b/plugin-kbindicator/src/kbdkeeper.cpp
+index 1a30cc1..30ac77d 100644
+--- a/plugin-kbindicator/src/kbdkeeper.cpp
++++ b/plugin-kbindicator/src/kbdkeeper.cpp
+@@ -25,6 +25,8 @@
+  * END_COMMON_COPYRIGHT_HEADER */
+ 
+ #include <QDebug>
++#include <QProcess>
++#include <QFileInfo>
+ #include <KWindowSystem/KWindowSystem>
+ #include <KWindowSystem/KWindowInfo>
+ #include <KWindowSystem/netwm_def.h>
+@@ -37,6 +39,7 @@ KbdKeeper::KbdKeeper(const KbdLayout & layout, KeeperType type):
+     m_type(type)
+ {
+     m_layout.readKbdInfo(m_info);
++    readUdevKbdInfo();
+ }
+ 
+ KbdKeeper::~KbdKeeper()
+@@ -83,6 +86,39 @@ void KbdKeeper::switchToGroup(uint group)
+     emit changed();
+ }
+ 
++void KbdKeeper::readUdevKbdInfo()
++{
++    // QProcess procRead;
++    // procRead.setProcessChannelMode(QProcess::ForwardedChannels);
++    // procRead.start("/home/adi/workspace/carpalx-keyboard/linux/systemd/showkbd");
++    // procRead.waitForFinished();
++
++    //QTextStream outStream(procRead.readAllStandardOutput());
++    //m_kbdType = outStream.readLine();
++    QFileInfo checkFile("/etc/udev/hwdb.d/61-carpalx.hwdb");
++    if (checkFile.exists() && checkFile.isFile())
++        m_kbdType = "CAR";
++    else
++        m_kbdType = "QWE";
++}
++
++void KbdKeeper::toggleKbdType()
++{
++    QProcess procChange;
++
++    procChange.start("sudo /home/adi/workspace/carpalx-keyboard/linux/systemd/changekbd");
++    procChange.waitForFinished();
++
++    readUdevKbdInfo();
++
++    emit changed();
++}
++
++const QString & KbdKeeper::udevLayout() const
++{
++    return m_kbdType;
++}
++
+ //--------------------------------------------------------------------------------------------------
+ 
+ WinKbdKeeper::WinKbdKeeper(const KbdLayout & layout):
+diff --git a/plugin-kbindicator/src/kbdkeeper.h b/plugin-kbindicator/src/kbdkeeper.h
+index 0cadce0..6d500aa 100644
+--- a/plugin-kbindicator/src/kbdkeeper.h
++++ b/plugin-kbindicator/src/kbdkeeper.h
+@@ -29,6 +29,7 @@
+ 
+ #include <QHash>
+ #include <QWidget>
++#include <QList>
+ #include "kbdlayout.h"
+ #include "kbdinfo.h"
+ #include "settings.h"
+@@ -52,10 +53,14 @@ public:
+     const QString & variant() const
+     { return m_info.currentVariant(); }
+ 
++    const QString & udevLayout() const;
++
+     KeeperType type() const
+     { return m_type; }
+ 
++    void toggleKbdType();
+     void switchToNext();
++    void readUdevKbdInfo();
+     virtual void switchToGroup(uint group);
+ protected slots:
+     virtual void keyboardChanged();
+@@ -67,6 +72,7 @@ protected:
+     const KbdLayout & m_layout;
+     KbdInfo           m_info;
+     KeeperType        m_type;
++    QString           m_kbdType;
+ };
+ 
+ //--------------------------------------------------------------------------------------------------
+diff --git a/plugin-kbindicator/src/kbdwatcher.cpp b/plugin-kbindicator/src/kbdwatcher.cpp
+index 2400c97..afd0da7 100644
+--- a/plugin-kbindicator/src/kbdwatcher.cpp
++++ b/plugin-kbindicator/src/kbdwatcher.cpp
+@@ -67,7 +67,10 @@ void KbdWatcher::createKeeper(KeeperType type)
+ 
+ void KbdWatcher::keeperChanged()
+ {
+-    emit layoutChanged(m_keeper->sym(), m_keeper->name(), m_keeper->variant());
++    emit layoutChanged(m_keeper->sym(),
++		       m_keeper->name(),
++		       m_keeper->variant(),
++		       m_keeper->udevLayout());
+ }
+ 
+ void KbdWatcher::controlClicked(Controls cnt)
+@@ -76,6 +79,9 @@ void KbdWatcher::controlClicked(Controls cnt)
+     case Controls::Layout:
+         m_keeper->switchToNext();
+         break;
++    case Controls::KbdType:
++        m_keeper->toggleKbdType();
++	break;
+     default:
+         m_layout.lockModifier(cnt, !m_layout.isModifierLocked(cnt));
+         break;
+diff --git a/plugin-kbindicator/src/kbdwatcher.h b/plugin-kbindicator/src/kbdwatcher.h
+index f8252bd..40aa1f1 100644
+--- a/plugin-kbindicator/src/kbdwatcher.h
++++ b/plugin-kbindicator/src/kbdwatcher.h
+@@ -48,7 +48,11 @@ public:
+ public slots:
+     void controlClicked(Controls cnt);
+ signals:
+-    void layoutChanged(const QString & sym, const QString & name, const QString & variant);
++    void layoutChanged(const QString & sym,
++		       const QString & name,
++		       const QString & variant,
++		       const QString & udevLayout);
++    
+     void modifierStateChanged(Controls mod, bool active);
+ 
+ private:
+diff --git a/plugin-kbindicator/src/settings.cpp b/plugin-kbindicator/src/settings.cpp
+index 8e9eb7b..0ee21aa 100644
+--- a/plugin-kbindicator/src/settings.cpp
++++ b/plugin-kbindicator/src/settings.cpp
+@@ -54,6 +54,9 @@ bool Settings::showScrollLock() const
+ bool Settings::showLayout() const
+ { return m_settings->value("show_layout", true).toBool(); }
+ 
++bool Settings::showKbdType() const
++{ return m_settings->value("show_kbd_type", true).toBool(); }
++
+ void Settings::setShowCapLock(bool show)
+ { m_settings->setValue("show_caps_lock", show); }
+ 
+@@ -66,6 +69,10 @@ void Settings::setShowScrollLock(bool show)
+ void Settings::setShowLayout(bool show)
+ { m_settings->setValue("show_layout", show); }
+ 
++void Settings::setShowKbdType(bool show)
++{ m_settings->setValue("show_kbd_type", show); }
++
++
+ KeeperType Settings::keeperType() const
+ {
+     QString type = m_settings->value("keeper_type", "global").toString();
+diff --git a/plugin-kbindicator/src/settings.h b/plugin-kbindicator/src/settings.h
+index 906fb14..9ed9d75 100644
+--- a/plugin-kbindicator/src/settings.h
++++ b/plugin-kbindicator/src/settings.h
+@@ -50,6 +50,7 @@ public:
+     bool showNumLock() const;
+     bool showScrollLock() const;
+     bool showLayout() const;
++    bool showKbdType() const;
+     KeeperType keeperType() const;
+     void restore();
+ public:
+@@ -57,6 +58,7 @@ public:
+     void setShowNumLock(bool show);
+     void setShowScrollLock(bool show);
+     void setShowLayout(bool show);
++    void setShowKbdType(bool show);
+     void setKeeperType(KeeperType type) const;
+ private:
+     QSettings                           *m_settings = 0;
